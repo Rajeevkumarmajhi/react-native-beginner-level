@@ -10,12 +10,12 @@ import {
 
 export const appwriteConfig = {
   endpoint: "https://cloud.appwrite.io/v1",
-  platform: "com.jsm.sora",
-  projectId: "660d0e00da0472f3ad52",
-  storageId: "660d0e59e293896f1eaf",
-  databaseId: "660d14b2b809e838959a",
-  userCollectionId: "660d14c0e8ae0ea842b8",
-  videoCollectionId: "660d157fcb8675efe308",
+  platform: "com.rktech.aura",
+  projectId: "66fab39c00289cd9349a",
+  storageId: "66faba0a00116d966d5d",
+  databaseId: "66fab61d001f81ceb158",
+  userCollectionId: "66fab65e0038f3c0e5ed",
+  videoCollectionId: "66fab694000f856aaabc",
 };
 
 const client = new Client();
@@ -30,20 +30,34 @@ const storage = new Storage(client);
 const avatars = new Avatars(client);
 const databases = new Databases(client);
 
-// Register user
-export async function createUser(email, password, username) {
-  try {
-    const newAccount = await account.create(
-      ID.unique(),
-      email,
-      password,
-      username
-    );
+interface UserForm {
+  email: string;
+  password: string;
+  username: string;
+}
 
-    if (!newAccount) throw Error;
+interface VideoPostForm {
+  title: string;
+  thumbnail: File;
+  video: File;
+  prompt: string;
+  userId: string;
+}
+
+// Register user
+export async function createUser(
+  email: string,
+  password: string,
+  username: string
+): Promise<any> {
+  try {
+    const newAccount = await account.create(ID.unique(), email, password, username);
+
+    if (!newAccount) throw new Error("Failed to create account");
 
     const avatarUrl = avatars.getInitials(username);
 
+    // Sign in the user after account creation
     await signIn(email, password);
 
     const newUser = await databases.createDocument(
@@ -52,45 +66,43 @@ export async function createUser(email, password, username) {
       ID.unique(),
       {
         accountId: newAccount.$id,
-        email: email,
-        username: username,
+        email,
+        username,
         avatar: avatarUrl,
       }
     );
 
     return newUser;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Sign In
-export async function signIn(email, password) {
+export async function signIn(email: string, password: string): Promise<any> {
   try {
-    const session = await account.createEmailSession(email, password);
-
+    const session = await account.createEmailPasswordSession(email, password);
     return session;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Get Account
-export async function getAccount() {
+export async function getAccount(): Promise<any> {
   try {
     const currentAccount = await account.get();
-
     return currentAccount;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Get Current User
-export async function getCurrentUser() {
+export async function getCurrentUser(): Promise<any> {
   try {
     const currentAccount = await getAccount();
-    if (!currentAccount) throw Error;
+    if (!currentAccount) throw new Error("No current account");
 
     const currentUser = await databases.listDocuments(
       appwriteConfig.databaseId,
@@ -98,77 +110,67 @@ export async function getCurrentUser() {
       [Query.equal("accountId", currentAccount.$id)]
     );
 
-    if (!currentUser) throw Error;
+    if (!currentUser) throw new Error("Failed to fetch user");
 
     return currentUser.documents[0];
-  } catch (error) {
+  } catch (error: any) {
     console.log(error);
     return null;
   }
 }
 
 // Sign Out
-export async function signOut() {
+export async function signOut(): Promise<any> {
   try {
     const session = await account.deleteSession("current");
-
     return session;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Upload File
-export async function uploadFile(file, type) {
+export async function uploadFile(file: File, type: string): Promise<string | undefined> {
   if (!file) return;
 
-  const { mimeType, ...rest } = file;
-  const asset = { type: mimeType, ...rest };
+  const { type: mimeType, ...rest } = file;
 
   try {
     const uploadedFile = await storage.createFile(
       appwriteConfig.storageId,
       ID.unique(),
-      asset
+      { type: mimeType, ...rest }
     );
 
     const fileUrl = await getFilePreview(uploadedFile.$id, type);
     return fileUrl;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Get File Preview
-export async function getFilePreview(fileId, type) {
-  let fileUrl;
-
+export async function getFilePreview(fileId: string, type: string): Promise<string> {
   try {
+    let fileUrl;
     if (type === "video") {
       fileUrl = storage.getFileView(appwriteConfig.storageId, fileId);
     } else if (type === "image") {
-      fileUrl = storage.getFilePreview(
-        appwriteConfig.storageId,
-        fileId,
-        2000,
-        2000,
-        "top",
-        100
-      );
+      fileUrl = storage.getFilePreview(appwriteConfig.storageId, fileId, 2000, 2000, "top", 100);
     } else {
       throw new Error("Invalid file type");
     }
 
-    if (!fileUrl) throw Error;
+    if (!fileUrl) throw new Error("Failed to retrieve file URL");
 
     return fileUrl;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Create Video Post
-export async function createVideoPost(form) {
+export async function createVideoPost(form: VideoPostForm): Promise<any> {
   try {
     const [thumbnailUrl, videoUrl] = await Promise.all([
       uploadFile(form.thumbnail, "image"),
@@ -189,27 +191,26 @@ export async function createVideoPost(form) {
     );
 
     return newPost;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Get all video Posts
-export async function getAllPosts() {
+export async function getAllPosts(): Promise<any[]> {
   try {
     const posts = await databases.listDocuments(
       appwriteConfig.databaseId,
       appwriteConfig.videoCollectionId
     );
-
     return posts.documents;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Get video posts created by user
-export async function getUserPosts(userId) {
+export async function getUserPosts(userId: string): Promise<any[]> {
   try {
     const posts = await databases.listDocuments(
       appwriteConfig.databaseId,
@@ -218,13 +219,13 @@ export async function getUserPosts(userId) {
     );
 
     return posts.documents;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
-// Get video posts that matches search query
-export async function searchPosts(query) {
+// Get video posts that match search query
+export async function searchPosts(query: string): Promise<any[]> {
   try {
     const posts = await databases.listDocuments(
       appwriteConfig.databaseId,
@@ -232,16 +233,16 @@ export async function searchPosts(query) {
       [Query.search("title", query)]
     );
 
-    if (!posts) throw new Error("Something went wrong");
+    if (!posts) throw new Error("No matching posts found");
 
     return posts.documents;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }
 
 // Get latest created video posts
-export async function getLatestPosts() {
+export async function getLatestPosts(): Promise<any[]> {
   try {
     const posts = await databases.listDocuments(
       appwriteConfig.databaseId,
@@ -250,7 +251,7 @@ export async function getLatestPosts() {
     );
 
     return posts.documents;
-  } catch (error) {
-    throw new Error(error);
+  } catch (error: any) {
+    throw new Error(error.message);
   }
 }

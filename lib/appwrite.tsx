@@ -17,6 +17,12 @@ export const appwriteConfig = {
   userCollectionId: "66fab65e0038f3c0e5ed",
   videoCollectionId: "66fab694000f856aaabc",
 };
+interface ReactNativeFile {
+  uri: string;
+  name: string;
+  type: string;
+  size: number;
+}
 
 const client = new Client();
 
@@ -81,12 +87,24 @@ export async function createUser(
 // Sign In
 export async function signIn(email: string, password: string): Promise<any> {
   try {
-    const session = await account.createEmailPasswordSession(email, password);
-    return session;
+    // Check if there is an active session
+    const session = await account.get(); // This fetches the current active session if any
+    return session; // Return the existing session
   } catch (error: any) {
-    throw new Error(error.message);
+    if (error.code === 401) {
+      // If no session exists or the session has expired, create a new one
+      try {
+        const newSession = await account.createEmailPasswordSession(email, password);
+        return newSession;
+      } catch (createError: any) {
+        throw new Error(createError.message);
+      }
+    } else {
+      throw new Error(error.message);
+    }
   }
 }
+
 
 // Get Account
 export async function getAccount(): Promise<any> {
@@ -130,16 +148,20 @@ export async function signOut(): Promise<any> {
 }
 
 // Upload File
-export async function uploadFile(file: File, type: string): Promise<string | undefined> {
+export async function uploadFile(file: ReactNativeFile, type: string): Promise<string | undefined> {
   if (!file) return;
 
-  const { type: mimeType, ...rest } = file;
-
   try {
+    // Upload the file using its URI
     const uploadedFile = await storage.createFile(
       appwriteConfig.storageId,
       ID.unique(),
-      { type: mimeType, ...rest }
+      {
+        name: file.name, // Name of the file
+        type: file.type, // MIME type of the file
+        size: file.size, // Size of the file
+        uri: file.uri   // URI pointing to the file on the device
+      }
     );
 
     const fileUrl = await getFilePreview(uploadedFile.$id, type);
@@ -170,7 +192,7 @@ export async function getFilePreview(fileId: string, type: string): Promise<stri
 }
 
 // Create Video Post
-export async function createVideoPost(form: VideoPostForm): Promise<any> {
+export async function createVideoPost(form) {
   try {
     const [thumbnailUrl, videoUrl] = await Promise.all([
       uploadFile(form.thumbnail, "image"),
@@ -191,10 +213,11 @@ export async function createVideoPost(form: VideoPostForm): Promise<any> {
     );
 
     return newPost;
-  } catch (error: any) {
-    throw new Error(error.message);
+  } catch (error) {
+    throw new Error(error);
   }
 }
+
 
 // Get all video Posts
 export async function getAllPosts(): Promise<any[]> {
@@ -220,7 +243,7 @@ export async function getUserPosts(userId: string): Promise<any[]> {
 
     return posts.documents;
   } catch (error: any) {
-    throw new Error(error.message);
+    return [];
   }
 }
 

@@ -8,6 +8,8 @@ import {
   Storage,
 } from "react-native-appwrite";
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export const appwriteConfig = {
   endpoint: "https://cloud.appwrite.io/v1",
   platform: "com.rktech.aura",
@@ -86,23 +88,29 @@ export async function createUser(
 
 // Sign In
 export async function signIn(email: string, password: string): Promise<any> {
-  try {
-    // Check if there is an active session
-    const session = await account.get(); // This fetches the current active session if any
-    return session; // Return the existing session
-  } catch (error: any) {
-    if (error.code === 401) {
-      // If no session exists or the session has expired, create a new one
-      try {
-        const newSession = await account.createEmailPasswordSession(email, password);
-        return newSession;
-      } catch (createError: any) {
-        throw new Error(createError.message);
+    try {
+      const response = await fetch('https://petvet.rajeevkumarmajhi.com.np/api/login', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (data.status == true) {
+        // Save the token securely
+        await AsyncStorage.setItem('userToken', data.token);
+        return data.user;
+
+      } else {
+        return false;
       }
-    } else {
-      throw new Error(error.message);
+
+    } catch (createError: any) {
+      throw new Error(createError.message);
     }
-  }
 }
 
 
@@ -140,8 +148,28 @@ export async function getCurrentUser(): Promise<any> {
 // Sign Out
 export async function signOut(): Promise<any> {
   try {
-    const session = await account.deleteSession("current");
-    return session;
+    const token = await AsyncStorage.getItem('userToken');
+    if (token) {
+      // Make a request to the logout API
+      const response = await fetch('https://petvet.rajeevkumarmajhi.com.np/api/logout', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`, // Pass the token in the headers
+          },
+      });
+
+      const data = await response.json();
+
+      if (data.status) {
+          // Logout successful, now clear the token from AsyncStorage
+          await AsyncStorage.removeItem('userToken');
+          console.log('User logged out successfully');
+      } else {
+          console.log('Logout failed:', data.message);
+      }
+    }
+
   } catch (error: any) {
     throw new Error(error.message);
   }
@@ -194,75 +222,180 @@ export async function getFilePreview(fileId: string, type: string): Promise<stri
 // Create Video Post
 export async function createVideoPost(form) {
   try {
-    const [thumbnailUrl, videoUrl] = await Promise.all([
-      uploadFile(form.thumbnail, "image"),
-      uploadFile(form.video, "video"),
-    ]);
+    const token = await AsyncStorage.getItem('userToken');
 
-    const newPost = await databases.createDocument(
-      appwriteConfig.databaseId,
-      appwriteConfig.videoCollectionId,
-      ID.unique(),
-      {
-        title: form.title,
-        thumbnail: thumbnailUrl,
-        video: videoUrl,
-        prompt: form.prompt,
-        creator: form.userId,
-      }
-    );
+    let formData = new FormData();
+    formData.append('title', form.title);
+    formData.append('prompt', form.prompt || '');
 
-    return newPost;
+    // Append thumbnail and video as files
+    formData.append('thumbnail', {
+      uri: form.thumbnail.uri, // Make sure form.thumbnail contains an object with 'uri'
+      type: form.thumbnail.type || 'image/jpeg', // Add correct MIME type (e.g., 'image/jpeg')
+      name: form.thumbnail.name || 'thumbnail.jpg', // Add file name
+    });
+
+    formData.append('video', {
+      uri: form.video.uri, // Make sure form.video contains an object with 'uri'
+      type: form.video.type || 'video/mp4', // Add correct MIME type (e.g., 'video/mp4')
+      name: form.video.name || 'video.mp4', // Add file name
+    });
+
+    const response = await fetch('https://petvet.rajeevkumarmajhi.com.np/api/video-posts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`, // Pass the token in the headers
+        'Content-Type': 'multipart/form-data',
+      },
+      body: formData,
+    });
+
+    const jsonResponse = await response.json();
+
+    if (response.ok) {
+      return jsonResponse;
+    } else {
+      throw new Error(jsonResponse.message || 'Something went wrong');
+    }
   } catch (error) {
-    throw new Error(error);
+    throw new Error(error.message);
   }
 }
+// export async function createVideoPost(form) {
+//   try {
+//     const token = await AsyncStorage.getItem('userToken');
+
+//     const response = await fetch('https://petvet.rajeevkumarmajhi.com.np/api/video-posts', {
+//         method: 'POST',
+//         headers: {
+//             'Content-Type': 'application/json',
+//             'Authorization': `Bearer ${token}`, // Pass the token in the headers
+//         },
+//     });
+
+
+
+
+
+
+//     // const [thumbnailUrl, videoUrl] = await Promise.all([
+//     //   uploadFile(form.thumbnail, "image"),
+//     //   uploadFile(form.video, "video"),
+//     // ]);
+
+
+
+//     // const newPost = await databases.createDocument(
+//     //   appwriteConfig.databaseId,
+//     //   appwriteConfig.videoCollectionId,
+//     //   ID.unique(),
+//     //   {
+//     //     title: form.title,
+//     //     thumbnail: thumbnailUrl,
+//     //     video: videoUrl,
+//     //     prompt: form.prompt,
+//     //     creator: form.userId,
+//     //   }
+//     // );
+
+//     return newPost;
+//   } catch (error) {
+//     throw new Error(error);
+//   }
+// }
 
 
 // Get all video Posts
-export async function getAllPosts(): Promise<any[]> {
+export async function getAllPosts() {
   try {
-    const posts = await databases.listDocuments(
-      appwriteConfig.databaseId,
-      appwriteConfig.videoCollectionId
-    );
-    return posts.documents;
-  } catch (error: any) {
+    const token = await AsyncStorage.getItem('userToken');
+
+    const response = await fetch('https://petvet.rajeevkumarmajhi.com.np/api/video-posts', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`, // Pass the token in the headers
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const jsonResponse = await response.json();
+
+    if (response.ok) {
+      return jsonResponse.data; // Assuming 'data' holds the list of posts
+    } else {
+      throw new Error(jsonResponse.message || 'Something went wrong');
+    }
+  } catch (error) {
     throw new Error(error.message);
   }
 }
 
-// Get video posts created by user
-export async function getUserPosts(userId: string): Promise<any[]> {
-  try {
-    const posts = await databases.listDocuments(
-      appwriteConfig.databaseId,
-      appwriteConfig.videoCollectionId,
-      [Query.equal("creator", userId)]
-    );
 
-    return posts.documents;
-  } catch (error: any) {
+// Get video posts created by user
+export async function getUserPosts(): Promise<any[]> {
+  try {
+    const token = await AsyncStorage.getItem('userToken');
+
+    const response = await fetch('https://petvet.rajeevkumarmajhi.com.np/api/video-posts?self_data=true', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`, // Pass the token in the headers
+      },
+    });
+
+    const data = await response.json();
+    if (data.status) {
+      return data.data; // Return the list of posts
+    } else {
+      return [];
+    }
+  } catch (error) {
+    console.error(error);
     return [];
   }
 }
 
+
 // Get video posts that match search query
-export async function searchPosts(query: string): Promise<any[]> {
+// export async function searchPosts(query: string): Promise<any[]> {
+//   try {
+//     const posts = await databases.listDocuments(
+//       appwriteConfig.databaseId,
+//       appwriteConfig.videoCollectionId,
+//       [Query.search("title", query)]
+//     );
+
+//     if (!posts) throw new Error("No matching posts found");
+
+//     return posts.documents;
+//   } catch (error: any) {
+//     throw new Error(error.message);
+//   }
+// }
+
+export async function searchPosts(query : string ): Promise<any[]> {
   try {
-    const posts = await databases.listDocuments(
-      appwriteConfig.databaseId,
-      appwriteConfig.videoCollectionId,
-      [Query.search("title", query)]
-    );
+    const token = await AsyncStorage.getItem('userToken');
 
-    if (!posts) throw new Error("No matching posts found");
+    const response = await fetch('https://petvet.rajeevkumarmajhi.com.np/api/video-posts?search='+query, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`, // Pass the token in the headers
+      },
+    });
 
-    return posts.documents;
-  } catch (error: any) {
-    throw new Error(error.message);
+    const data = await response.json();
+    if (data.status) {
+      return data.data; // Return the list of posts
+    } else {
+      return [];
+    }
+  } catch (error) {
+    console.error(error);
+    return [];
   }
 }
+
 
 // Get latest created video posts
 export async function getLatestPosts(): Promise<any[]> {

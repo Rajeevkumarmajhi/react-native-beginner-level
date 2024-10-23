@@ -18,13 +18,18 @@ const SignIn = () => {
   const submit = async () => {
     if (form.email === "" || form.password === "") {
       Alert.alert("Error", "Please fill in all fields");
+      return;
     }
 
     setSubmitting(true);
 
     try {
-      await signIn(form.email, form.password);
-      const result = await getCurrentUser();
+      const result = await signIn(form.email, form.password);
+      if(result == false){
+        Alert.alert('Error','Invalid login details');
+        setSubmitting(false);
+        return;
+      }
       setUser(result);
       setIsLogged(true);
 
@@ -54,7 +59,7 @@ const SignIn = () => {
           />
 
           <Text className="text-2xl font-semibold text-white mt-10 font-psemibold">
-            Log in to Aora 
+            Log in to Aora
           </Text>
 
           <FormField
@@ -62,7 +67,6 @@ const SignIn = () => {
             value={form.email}
             handleChangeText={(e) => setForm({ ...form, email: e })}
             otherStyles="mt-7"
-            keyboardType="email-address"
             placeholder={"Enter your email"}
           />
 
